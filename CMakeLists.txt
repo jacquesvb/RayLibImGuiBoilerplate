@@ -57,6 +57,64 @@ else()
 	FetchContent_MakeAvailable(raylib)
 endif()
 
+# Dear ImGui is vendored inside thirdparty/imgui, and the rlImGui backend that
+# renders it with raylib lives in thirdparty/rlImGui. Both are cloned from
+# GitHub during the first CMake configure if they aren't there yet.
+#
+# The versions below are a matched pair: rlImGui's "Raylib_5_5" tag is built
+# against raylib 5.5 and Dear ImGui 1.92.7.
+set(IMGUI_VERSION "v1.92.7" CACHE STRING "Dear ImGui version used when fetching")
+set(IMGUI_SOURCE_DIR "${THIRDPARTY_DIR}/imgui")
+set(RLIMGUI_VERSION "Raylib_5_5" CACHE STRING "rlImGui tag used when fetching")
+set(RLIMGUI_SOURCE_DIR "${THIRDPARTY_DIR}/rlImGui")
+
+if(EXISTS "${IMGUI_SOURCE_DIR}/imgui.cpp")
+	message(STATUS "Dear ImGui found at ${IMGUI_SOURCE_DIR}")
+else()
+	message(STATUS "Dear ImGui not found in thirdparty, fetching version ${IMGUI_VERSION}...")
+	include(FetchContent)
+	FetchContent_Declare(
+		imgui
+		GIT_REPOSITORY https://github.com/ocornut/imgui.git
+		GIT_TAG ${IMGUI_VERSION}
+		GIT_SHALLOW TRUE
+		SOURCE_DIR "${IMGUI_SOURCE_DIR}"
+	)
+	FetchContent_MakeAvailable(imgui)
+endif()
+
+if(EXISTS "${RLIMGUI_SOURCE_DIR}/rlImGui.cpp")
+	message(STATUS "rlImGui found at ${RLIMGUI_SOURCE_DIR}")
+else()
+	message(STATUS "rlImGui not found in thirdparty, fetching version ${RLIMGUI_VERSION}...")
+	include(FetchContent)
+	FetchContent_Declare(
+		rlImGui
+		GIT_REPOSITORY https://github.com/raylib-extras/rlImGui.git
+		GIT_TAG ${RLIMGUI_VERSION}
+		GIT_SHALLOW TRUE
+		SOURCE_DIR "${RLIMGUI_SOURCE_DIR}"
+	)
+	FetchContent_MakeAvailable(rlImGui)
+endif()
+
+# Neither upstream project ships a CMakeLists.txt, so build the static
+# libraries here. "imgui" is the core library; "rlImGui" adds the backend that
+# draws ImGui using raylib. Link against the "rlImGui" target to use both.
+add_library(imgui STATIC
+	"${IMGUI_SOURCE_DIR}/imgui.cpp"
+	"${IMGUI_SOURCE_DIR}/imgui_draw.cpp"
+	"${IMGUI_SOURCE_DIR}/imgui_tables.cpp"
+	"${IMGUI_SOURCE_DIR}/imgui_widgets.cpp"
+)
+target_include_directories(imgui PUBLIC "${IMGUI_SOURCE_DIR}")
+set_target_properties(imgui PROPERTIES CXX_STANDARD 17)
+
+add_library(rlImGui STATIC "${RLIMGUI_SOURCE_DIR}/rlImGui.cpp")
+target_include_directories(rlImGui PUBLIC "${RLIMGUI_SOURCE_DIR}")
+target_link_libraries(rlImGui PUBLIC imgui raylib)
+set_target_properties(rlImGui PROPERTIES CXX_STANDARD 17)
+
 
 # MY_SOURCES is defined to be a list of all the source files for my game 
 # DON'T ADD THE SOURCES BY HAND, they are already added with this macro
@@ -84,6 +142,11 @@ target_sources("${CMAKE_PROJECT_NAME}" PRIVATE ${MY_SOURCES} )
 
 # Link raylib (fetched or vendored above)
 target_link_libraries("${CMAKE_PROJECT_NAME}" PRIVATE raylib)
+
+# Link Dear ImGui through the rlImGui raylib backend (fetched or vendored above).
+# Remove this line if the game doesn't use ImGui; the targets above stay
+# available for anything that does.
+target_link_libraries("${CMAKE_PROJECT_NAME}" PRIVATE rlImGui)
 
 
 if(MSVC) # If using the VS compiler...

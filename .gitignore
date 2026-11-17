@@ -4,6 +4,8 @@ build/
 
 # Vendored dependencies fetched by CMake
 /thirdparty/raylib/
+/thirdparty/imgui/
+/thirdparty/rlImGui/
 
 /.vs
 .idea/
