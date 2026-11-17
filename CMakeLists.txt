@@ -57,30 +57,61 @@ else()
 	FetchContent_MakeAvailable(raylib)
 endif()
 
-# Dear ImGui is vendored inside thirdparty/imgui, and the rlImGui backend that
-# renders it with raylib lives in thirdparty/rlImGui. Both are cloned from
-# GitHub during the first CMake configure if they aren't there yet.
+# Dear ImGui's docking branch is vendored inside thirdparty/imgui-docking. It is
+# the same library as thirdparty/imgui plus the docking / multi-viewport
+# features (ImGuiConfigFlags_DockingEnable, ImGui::DockSpaceOverViewport, ...).
+# Only one of the two copies is compiled, because they export the same symbols,
+# so the docking branch is used by default. Set IMGUI_USE_DOCKING to OFF to use
+# the regular branch in thirdparty/imgui instead; the current main.cpp relies on
+# docking-only APIs, so it would then need those calls removed.
+#
+# The rlImGui backend that renders Dear ImGui with raylib lives in
+# thirdparty/rlImGui. All of them are cloned from GitHub during the first CMake
+# configure if they aren't there yet.
 #
 # The versions below are a matched pair: rlImGui's "Raylib_5_5" tag is built
-# against raylib 5.5 and Dear ImGui 1.92.7.
+# against raylib 5.5 and Dear ImGui 1.92.7, so the docking tag is pinned to the
+# same 1.92.7 release.
+set(IMGUI_USE_DOCKING ON CACHE BOOL "Use the docking branch of Dear ImGui")
 set(IMGUI_VERSION "v1.92.7" CACHE STRING "Dear ImGui version used when fetching")
 set(IMGUI_SOURCE_DIR "${THIRDPARTY_DIR}/imgui")
+set(IMGUI_DOCKING_VERSION "v1.92.7-docking" CACHE STRING "Dear ImGui docking branch version used when fetching")
+set(IMGUI_DOCKING_SOURCE_DIR "${THIRDPARTY_DIR}/imgui-docking")
 set(RLIMGUI_VERSION "Raylib_5_5" CACHE STRING "rlImGui tag used when fetching")
 set(RLIMGUI_SOURCE_DIR "${THIRDPARTY_DIR}/rlImGui")
 
-if(EXISTS "${IMGUI_SOURCE_DIR}/imgui.cpp")
-	message(STATUS "Dear ImGui found at ${IMGUI_SOURCE_DIR}")
+if(IMGUI_USE_DOCKING)
+	if(EXISTS "${IMGUI_DOCKING_SOURCE_DIR}/imgui.cpp")
+		message(STATUS "Dear ImGui (docking) found at ${IMGUI_DOCKING_SOURCE_DIR}")
+	else()
+		message(STATUS "Dear ImGui (docking) not found in thirdparty, fetching version ${IMGUI_DOCKING_VERSION}...")
+		include(FetchContent)
+		FetchContent_Declare(
+			imgui-docking
+			GIT_REPOSITORY https://github.com/ocornut/imgui.git
+			GIT_TAG ${IMGUI_DOCKING_VERSION}
+			GIT_SHALLOW TRUE
+			SOURCE_DIR "${IMGUI_DOCKING_SOURCE_DIR}"
+		)
+		FetchContent_MakeAvailable(imgui-docking)
+	endif()
+	set(IMGUI_ACTIVE_SOURCE_DIR "${IMGUI_DOCKING_SOURCE_DIR}")
 else()
-	message(STATUS "Dear ImGui not found in thirdparty, fetching version ${IMGUI_VERSION}...")
-	include(FetchContent)
-	FetchContent_Declare(
-		imgui
-		GIT_REPOSITORY https://github.com/ocornut/imgui.git
-		GIT_TAG ${IMGUI_VERSION}
-		GIT_SHALLOW TRUE
-		SOURCE_DIR "${IMGUI_SOURCE_DIR}"
-	)
-	FetchContent_MakeAvailable(imgui)
+	if(EXISTS "${IMGUI_SOURCE_DIR}/imgui.cpp")
+		message(STATUS "Dear ImGui found at ${IMGUI_SOURCE_DIR}")
+	else()
+		message(STATUS "Dear ImGui not found in thirdparty, fetching version ${IMGUI_VERSION}...")
+		include(FetchContent)
+		FetchContent_Declare(
+			imgui
+			GIT_REPOSITORY https://github.com/ocornut/imgui.git
+			GIT_TAG ${IMGUI_VERSION}
+			GIT_SHALLOW TRUE
+			SOURCE_DIR "${IMGUI_SOURCE_DIR}"
+		)
+		FetchContent_MakeAvailable(imgui)
+	endif()
+	set(IMGUI_ACTIVE_SOURCE_DIR "${IMGUI_SOURCE_DIR}")
 endif()
 
 if(EXISTS "${RLIMGUI_SOURCE_DIR}/rlImGui.cpp")
@@ -99,15 +130,18 @@ else()
 endif()
 
 # Neither upstream project ships a CMakeLists.txt, so build the static
-# libraries here. "imgui" is the core library; "rlImGui" adds the backend that
-# draws ImGui using raylib. Link against the "rlImGui" target to use both.
+# libraries here. "imgui" is the core library (from whichever branch
+# IMGUI_USE_DOCKING selected); "rlImGui" adds the backend that draws ImGui using
+# raylib. Link against the "rlImGui" target to use both. imgui_demo.cpp is
+# included because main.cpp calls ImGui::ShowDemoWindow().
 add_library(imgui STATIC
-	"${IMGUI_SOURCE_DIR}/imgui.cpp"
-	"${IMGUI_SOURCE_DIR}/imgui_draw.cpp"
-	"${IMGUI_SOURCE_DIR}/imgui_tables.cpp"
-	"${IMGUI_SOURCE_DIR}/imgui_widgets.cpp"
+	"${IMGUI_ACTIVE_SOURCE_DIR}/imgui.cpp"
+	"${IMGUI_ACTIVE_SOURCE_DIR}/imgui_demo.cpp"
+	"${IMGUI_ACTIVE_SOURCE_DIR}/imgui_draw.cpp"
+	"${IMGUI_ACTIVE_SOURCE_DIR}/imgui_tables.cpp"
+	"${IMGUI_ACTIVE_SOURCE_DIR}/imgui_widgets.cpp"
 )
-target_include_directories(imgui PUBLIC "${IMGUI_SOURCE_DIR}")
+target_include_directories(imgui PUBLIC "${IMGUI_ACTIVE_SOURCE_DIR}")
 set_target_properties(imgui PROPERTIES CXX_STANDARD 17)
 
 add_library(rlImGui STATIC "${RLIMGUI_SOURCE_DIR}/rlImGui.cpp")
